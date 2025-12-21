@@ -1,8 +1,8 @@
 import string
 import time
 import concurrent.futures
-import os
 import random
+import os
 import multiprocessing
 
 def random_string(length: int):
@@ -12,8 +12,8 @@ def generate_dataset(n_string,length):
     return [random_string(length) for _ in range(n_string)]
 
 def chunkify(data, n_chunks):
-    size = (len(data)+ n_chunks - 1)
-    return [data[i:i + size] for i in range(0,len(data),size)]
+    size = max(1, len(data) // n_chunks)
+    return [data[i:i + size] for i in range(0, len(data), size)]
 
 def levenshtein_distance(s1: str, s2: str) -> int:
     m, n = len(s1), len(s2)
@@ -39,6 +39,7 @@ def levenshtein_distance(s1: str, s2: str) -> int:
 
 def worker(args):
     pattern,chunk = args
+    print(f"process id: {os.getpid()}")
     return [levenshtein_distance(pattern,s) for s in chunk]
 
 def main():
@@ -63,7 +64,6 @@ def main():
         results.append(levenshtein_distance(pattern,string))
     end = time.time()
     print(f"sequential time: {end - start}")
-
 
 if __name__ == '__main__':
     main()
