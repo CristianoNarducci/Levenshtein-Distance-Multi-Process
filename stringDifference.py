@@ -64,5 +64,6 @@ def main():
     end = time.time()
     print(f"sequential time: {end - start}")
 
+
 if __name__ == '__main__':
     main()
