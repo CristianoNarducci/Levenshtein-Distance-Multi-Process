@@ -56,14 +56,14 @@ def main():
         results = list(executor.map(worker,args))
     end = time.time()
     results = [d for sub in results for d in sub]
-    print(f"multiprocessing time: {end - start}\n")
+    print(f"multiprocessing time: {end - start}, with index: {results.index(max(results))}\n")
     print("Start Sequential Version:")
     results.clear()
     start = time.time()
     for string in corpus:
         results.append(levenshtein_distance(pattern,string))
     end = time.time()
-    print(f"sequential time: {end - start}")
+    print(f"sequential time: {end - start},with index: {results.index(max(results))}")
 
 if __name__ == '__main__':
     main()
