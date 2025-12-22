@@ -93,12 +93,19 @@ def worker_levenshtein(args):
 def main():
     n_proc = multiprocessing.cpu_count()
     print(f"Core rilevati: {n_proc}")
-    pattern = "plug"
-    #corpus = generate_dataset(10000, 120)
-    corpus = load_corpus('dataset.txt')
+    user_choice = int(input("Use random string generator(1) or sample dataset (2)? "))
+    if user_choice == 1:
+        pattern = random_string(100)#"product"
+        corpus = generate_dataset(50000, 120)
+    elif user_choice == 2:
+        pattern = str(input("input a word ")).strip()
+        corpus = load_corpus('dataset.txt')
+    else:
+        print("error wrong input!")
+        return
     print(f"Dataset caricato: {len(corpus)} elementi.")
     all_text = " ".join(corpus).translate(str.maketrans('', '', string.punctuation)).lower()
-    unique_words = list((all_text.split()))
+    unique_words = list(set(all_text.split()))
     print(f"Analisi su {len(unique_words)} parole uniche trovate nel dataset.")
 
     chunks_lev = chunkify(unique_words, n_proc)
