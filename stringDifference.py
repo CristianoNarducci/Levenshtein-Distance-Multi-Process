@@ -4,7 +4,7 @@ import concurrent.futures
 import random
 import os
 import multiprocessing
-
+from tqdm import tqdm
 
 def load_corpus(path):
     corpus = []
@@ -27,7 +27,8 @@ def generate_dataset(n_string, length):
 
 def chunkify(data, n_chunks):
     size = max(1, len(data) // n_chunks)
-    return [data[i:i + size] for i in range(0, len(data), size)]
+    for i in range(0,len(data),size):
+        yield data[i:i + size]
 
 
 def levenshtein_distance(s1: str, s2: str) -> int:
@@ -81,18 +82,17 @@ def bitap(s1: str, s2: str, k: int):
 def worker_bitap(args):
     pattern, chunk, index = args
     k = 1
-    print(f"process id: {os.getpid()} process chunk {index}")
     return [bitap(s, pattern, k) for s in chunk]
 
 
 def worker_levenshtein(args):
     pattern, chunk, index = args
-    print(f"process id: {os.getpid()} process chunk {index}")
     return [(word, levenshtein_distance(pattern.lower(), word)) for word in chunk]
 
 def main():
-    n_proc = multiprocessing.cpu_count()
-    print(f"Core rilevati: {n_proc}")
+    n_proc = max(1, multiprocessing.cpu_count() - 2)
+    print(f"Core totali: {multiprocessing.cpu_count()} | Core utilizzati: {n_proc}")
+    num_chunks = n_proc * 10
     user_choice = int(input("Use random string generator(1) or sample dataset (2)? "))
     if user_choice == 1:
         pattern = random_string(100)#"product"
@@ -107,22 +107,29 @@ def main():
     all_text = " ".join(corpus).translate(str.maketrans('', '', string.punctuation)).lower()
     unique_words = list(set(all_text.split()))
     print(f"Analisi su {len(unique_words)} parole uniche trovate nel dataset.")
-    chunks_lev = chunkify(unique_words, n_proc)
+    chunks_lev = list(chunkify(unique_words, num_chunks))
     args = [(pattern, chunk, i) for i, chunk in enumerate(chunks_lev)]
+    print(f"Avvio elaborazione con {n_proc} processi su {len(chunks_lev)} chunk...\n")
     print(f"pattern: {pattern}\n")
     print("Start MultiProcess Version:")
+    final_results = []
     start = time.perf_counter()
     with concurrent.futures.ProcessPoolExecutor(max_workers=n_proc) as executor:
-        results = list(executor.map(worker_levenshtein, args))
+        future_to_chunk = {executor.submit(worker_levenshtein, arg): arg for arg in args}
+        for future in tqdm(concurrent.futures.as_completed(future_to_chunk),total=len(future_to_chunk),desc="elaborazione chunk",unit="chunk"):
+            try:
+                result = future.result()
+                final_results.extend(result)
+            except Exception as exc:
+                print(f"Un chunk ha generato un errore: {exc}")
     end = time.perf_counter()
     time_parallel = end - start
     print(f"\nMultiprocess time elapsed: {time_parallel:.3f}s")
-    final_results = [item for sublist in results for item in sublist]
-    # Ordiniamo per distanza (i più simili in alto)
     final_results.sort(key=lambda x: x[1])
     print("--- Top 10 parole più simili nel dataset ---")
     for word, dist in final_results[:10]:
         print(f"Parola: {word:15} | Distanza: {dist}")
+
     print("\nStart Sequential Version:")
     results = []
     start = time.perf_counter()
@@ -133,20 +140,22 @@ def main():
     print(f"Sequential time elapsed: {time_sequential:.3f} s,with index: {results.index(max(results))}")
     print(f"Speedup: {time_sequential / time_parallel:.3f}")
     print("\nStart Bitap algorithm parallelized")
-    chunks_bit = chunkify(corpus,n_proc)
+    chunks_bit = chunkify(corpus,num_chunks)
     args = [(pattern, chunk, i) for i, chunk in enumerate(chunks_bit)]
     start = time.perf_counter()
+    bitap_raw = []
     with concurrent.futures.ProcessPoolExecutor(max_workers=n_proc) as executor:
-        bitap_raw = list(executor.map(worker_bitap, args))
+        futures = {executor.submit(worker_bitap, arg): arg for arg in args}
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Bitap", unit="chunk"):
+            bitap_raw.extend(future.result())
     end = time.perf_counter()
     time_parallel = end - start
-    bitap_results = [res for sub in bitap_raw for res in sub]
-    matches_found = [i for i, m in enumerate(bitap_results) if len(m) > 0]
+    matches_found = [i for i, m in enumerate(bitap_raw) if len(m) > 0]
     print(f"\nMultiprocess time elapsed: {time_parallel:.3f}s")
     print(f"Stringhe con match: {len(matches_found)} su {len(corpus)}")
     if matches_found:
         idx = matches_found[0]
-        print(f"Esempio: Stringa {idx} ha match alle posizioni: {bitap_results[idx]} con testo: {corpus[idx]}")
+        print(f"Esempio: Stringa {idx}: {corpus[idx]}")
     print("\nStart Sequential Version:")
     start = time.perf_counter()
     results_seq = []
@@ -160,7 +169,7 @@ def main():
     print(f"Stringhe con match: {len(matches_found)} su {len(corpus)}")
     if matches_found:
         idx = matches_found[0]
-        print(f"Esempio: Stringa {idx} ha match alle posizioni: {bitap_results[idx]} con testo: {corpus[idx]}")
+        print(f"Esempio: Stringa {idx} testo: {corpus[idx]}")
 
 
 if __name__ == '__main__':
