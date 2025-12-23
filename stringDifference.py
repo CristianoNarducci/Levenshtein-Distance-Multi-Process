@@ -107,7 +107,6 @@ def main():
     all_text = " ".join(corpus).translate(str.maketrans('', '', string.punctuation)).lower()
     unique_words = list(set(all_text.split()))
     print(f"Analisi su {len(unique_words)} parole uniche trovate nel dataset.")
-
     chunks_lev = chunkify(unique_words, n_proc)
     args = [(pattern, chunk, i) for i, chunk in enumerate(chunks_lev)]
     print(f"pattern: {pattern}\n")
@@ -115,28 +114,27 @@ def main():
     start = time.perf_counter()
     with concurrent.futures.ProcessPoolExecutor(max_workers=n_proc) as executor:
         results = list(executor.map(worker_levenshtein, args))
-
     end = time.perf_counter()
     time_parallel = end - start
-    print(f"Tempo: {time_parallel:.3f}s")
+    print(f"\nMultiprocess time elapsed: {time_parallel:.3f}s")
     final_results = [item for sublist in results for item in sublist]
     # Ordiniamo per distanza (i più simili in alto)
     final_results.sort(key=lambda x: x[1])
-    print("\n--- Top 10 parole più simili nel dataset ---")
+    print("--- Top 10 parole più simili nel dataset ---")
     for word, dist in final_results[:10]:
         print(f"Parola: {word:15} | Distanza: {dist}")
-    print("Start Sequential Version:")
-
+    print("\nStart Sequential Version:")
     results = []
     start = time.perf_counter()
     for words in unique_words:
         results.append(levenshtein_distance(pattern.lower(), words.lower()))
     end = time.perf_counter()
     time_sequential = end - start
-    print(f"sequential time: {time_sequential:.3f} s,with index: {results.index(max(results))}")
+    print(f"Sequential time elapsed: {time_sequential:.3f} s,with index: {results.index(max(results))}")
     print(f"Speedup: {time_sequential / time_parallel:.3f}")
-
-    print("Start bitap algorithm parallelized")
+    print("\nStart Bitap algorithm parallelized")
+    chunks_bit = chunkify(corpus,n_proc)
+    args = [(pattern, chunk, i) for i, chunk in enumerate(chunks_bit)]
     start = time.perf_counter()
     with concurrent.futures.ProcessPoolExecutor(max_workers=n_proc) as executor:
         bitap_raw = list(executor.map(worker_bitap, args))
@@ -144,19 +142,25 @@ def main():
     time_parallel = end - start
     bitap_results = [res for sub in bitap_raw for res in sub]
     matches_found = [i for i, m in enumerate(bitap_results) if len(m) > 0]
-    print(f"Tempo: {time_parallel:.3f}s")
+    print(f"\nMultiprocess time elapsed: {time_parallel:.3f}s")
     print(f"Stringhe con match: {len(matches_found)} su {len(corpus)}")
     if matches_found:
         idx = matches_found[0]
         print(f"Esempio: Stringa {idx} ha match alle posizioni: {bitap_results[idx]} con testo: {corpus[idx]}")
-    print("Start Sequential Version:")
+    print("\nStart Sequential Version:")
     start = time.perf_counter()
     results_seq = []
     for text in corpus:
-        results_seq.append(bitap(text, pattern, k=15))
+        results_seq.append(bitap(text, pattern, k=1))
     end = time.perf_counter()
     time_sequential = end - start
-    print(f"sequential time: {time_sequential:.3f}")
+    print(f"sequential time elapsed: {time_sequential:.3f}")
+    print(f"Speedup:{time_sequential/time_parallel:.3f}")
+    matches_found = [i for i, m in enumerate(results_seq) if len(m) > 0]
+    print(f"Stringhe con match: {len(matches_found)} su {len(corpus)}")
+    if matches_found:
+        idx = matches_found[0]
+        print(f"Esempio: Stringa {idx} ha match alle posizioni: {bitap_results[idx]} con testo: {corpus[idx]}")
 
 
 if __name__ == '__main__':
