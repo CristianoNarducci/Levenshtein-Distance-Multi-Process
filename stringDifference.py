@@ -2,7 +2,6 @@ import string
 import time
 import concurrent.futures
 import random
-import os
 import multiprocessing
 from tqdm import tqdm
 
@@ -54,46 +53,57 @@ def levenshtein_distance(s1: str, s2: str) -> int:
     return dp[m][n]
 
 
-def bitap(s1: str, s2: str, k: int):
-    m = len(s2)
-    if m == 0:
-        return []
-    alphabet = set(s1 + s2)
-    mask = {}
-    for i, c in enumerate(s2):
-        mask[c] = mask.get(c, ~0) & ~(1 << i)
-
-    R = [~0] * (k + 1)
+def bitap(text):
+    R = [~0] * (GLOBAL_K + 1)
     matches = []
 
-    for i, c in enumerate(s1):
-        old_R = list(R)
-        R[0] = ((old_R[0] << 1) | 1) | mask.get(c, ~0)
-        for j in range(1, k + 1):
-            # Bitap con approssimazione (Levenshtein/Hamming semplificato)
-            R[j] = ((old_R[j] << 1) | 1) | mask.get(c, ~0)
-            R[j] &= (old_R[j - 1] << 1) & (R[j - 1] << 1) & old_R[j - 1]
-        if not (R[k] & (1 << (m - 1))):
+    for i, c in enumerate(text):
+        char_mask = GLOBAL_MASK.get(c, ~0)
+
+        old_R0 = R[0]
+        R[0] = ((old_R0 << 1) | 1) | char_mask
+
+        for j in range(1, GLOBAL_K + 1):
+            tmp = R[j]
+            R[j] = ((tmp << 1) | 1) | char_mask
+            R[j] &= (old_R0 << 1) & (R[j - 1] << 1) & old_R0
+            old_R0 = tmp
+
+        if not (R[GLOBAL_K] & (1 << (GLOBAL_M - 1))):
             matches.append(i)
 
     return matches
 
 
-def worker_bitap(args):
-    pattern, chunk, index = args
-    k = 1
-    return [bitap(s, pattern, k) for s in chunk]
+def init_worker_lev(pattern):
+    global GLOBAL_PATTERN
+    GLOBAL_PATTERN = pattern.lower()
 
+def init_worker_bitap(pattern,k):
+    global GLOBAL_PATTERN, GLOBAL_MASK, GLOBAL_K, GLOBAL_M
+    GLOBAL_PATTERN = pattern.lower()
+    GLOBAL_K = k
+    GLOBAL_M = len(pattern.lower())
+    mask = {}
+    for i, c in enumerate(pattern):
+        mask[c] = mask.get(c, ~0) & ~(1 << i)
+    GLOBAL_MASK = mask
+
+def worker_bitap(chunk):
+    result = []
+    for text in chunk:
+        result.append(bitap(text))
+    return result
 
 def worker_levenshtein(args):
-    pattern, chunk, index = args
-    return [(word, levenshtein_distance(pattern.lower(), word)) for word in chunk]
+    chunk = args
+    return [(word, levenshtein_distance(GLOBAL_PATTERN, word)) for word in chunk]
 
 def main():
     n_proc = max(1, multiprocessing.cpu_count() - 2)
     print(f"Core totali: {multiprocessing.cpu_count()} | Core utilizzati: {n_proc}")
     num_chunks = n_proc * 10
-    user_choice = int(input("Use random string generator(1) or sample dataset (2)? "))
+    user_choice = int(input("Use random string generator (1) or sample dataset (2)? "))
     if user_choice == 1:
         pattern = random_string(100)#"product"
         corpus = generate_dataset(50000, 120)
@@ -104,19 +114,22 @@ def main():
         print("error wrong input!")
         return
     print(f"Dataset caricato: {len(corpus)} elementi.")
-    all_text = " ".join(corpus).translate(str.maketrans('', '', string.punctuation)).lower()
-    unique_words = list(set(all_text.split()))
+    unique_words = set()
+    for text in corpus:
+        clean_text = text.translate(str.maketrans('','',string.punctuation)).lower()
+        unique_words.update(clean_text.split())
+    unique_words = list(unique_words)
     print(f"Analisi su {len(unique_words)} parole uniche trovate nel dataset.")
-    chunks_lev = list(chunkify(unique_words, num_chunks))
-    args = [(pattern, chunk, i) for i, chunk in enumerate(chunks_lev)]
-    print(f"Avvio elaborazione con {n_proc} processi su {len(chunks_lev)} chunk...\n")
+    chunks_lev = chunkify(unique_words, num_chunks)
+    args = [chunk for _, chunk in enumerate(chunks_lev)]
+    print(f"Avvio elaborazione con {n_proc} processi su {len(args)} chunk...\n")
     print(f"pattern: {pattern}\n")
     print("Start MultiProcess Version:")
     final_results = []
     start = time.perf_counter()
-    with concurrent.futures.ProcessPoolExecutor(max_workers=n_proc) as executor:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=n_proc, initializer=init_worker_lev, initargs=(pattern,)) as executor:
         future_to_chunk = {executor.submit(worker_levenshtein, arg): arg for arg in args}
-        for future in tqdm(concurrent.futures.as_completed(future_to_chunk),total=len(future_to_chunk),desc="elaborazione chunk",unit="chunk"):
+        for future in tqdm(concurrent.futures.as_completed(future_to_chunk),total=len(future_to_chunk),desc="elaborazione chunk",unit=" chunk"):
             try:
                 result = future.result()
                 final_results.extend(result)
@@ -133,7 +146,7 @@ def main():
     print("\nStart Sequential Version:")
     results = []
     start = time.perf_counter()
-    for words in unique_words:
+    for words in tqdm(unique_words,total=len(unique_words),desc="elaborazione chunk",unit=" chunk"):
         results.append(levenshtein_distance(pattern.lower(), words.lower()))
     end = time.perf_counter()
     time_sequential = end - start
@@ -141,12 +154,12 @@ def main():
     print(f"Speedup: {time_sequential / time_parallel:.3f}")
     print("\nStart Bitap algorithm parallelized")
     chunks_bit = chunkify(corpus,num_chunks)
-    args = [(pattern, chunk, i) for i, chunk in enumerate(chunks_bit)]
-    start = time.perf_counter()
+    args = [chunk for _, chunk in enumerate(chunks_bit)]
     bitap_raw = []
-    with concurrent.futures.ProcessPoolExecutor(max_workers=n_proc) as executor:
+    start = time.perf_counter()
+    with concurrent.futures.ProcessPoolExecutor(max_workers=n_proc,initializer=init_worker_bitap,initargs=(pattern,1)) as executor:
         futures = {executor.submit(worker_bitap, arg): arg for arg in args}
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Bitap", unit="chunk"):
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Bitap", unit=" chunk"):
             bitap_raw.extend(future.result())
     end = time.perf_counter()
     time_parallel = end - start
@@ -157,14 +170,15 @@ def main():
         idx = matches_found[0]
         print(f"Esempio: Stringa {idx}: {corpus[idx]}")
     print("\nStart Sequential Version:")
+    init_worker_bitap(pattern, 1)
     start = time.perf_counter()
     results_seq = []
-    for text in corpus:
-        results_seq.append(bitap(text, pattern, k=1))
+    for text in tqdm(corpus,total=len(corpus),desc="elaborazione chunk",unit=" chunk"):
+        results_seq.append(bitap(text))
     end = time.perf_counter()
     time_sequential = end - start
     print(f"sequential time elapsed: {time_sequential:.3f}")
-    print(f"Speedup:{time_sequential/time_parallel:.3f}")
+    print(f"Speedup: {time_sequential/time_parallel:.3f}")
     matches_found = [i for i, m in enumerate(results_seq) if len(m) > 0]
     print(f"Stringhe con match: {len(matches_found)} su {len(corpus)}")
     if matches_found:
