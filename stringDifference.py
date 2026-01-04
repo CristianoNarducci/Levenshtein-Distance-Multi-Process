@@ -159,7 +159,7 @@ def main():
     start = time.perf_counter()
     with concurrent.futures.ProcessPoolExecutor(max_workers=n_proc,initializer=init_worker_bitap,initargs=(pattern,1)) as executor:
         futures = {executor.submit(worker_bitap, arg): arg for arg in args}
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Bitap", unit=" chunk"):
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="elaborazione chunk", unit=" chunk"):
             bitap_raw.extend(future.result())
     end = time.perf_counter()
     time_parallel = end - start
