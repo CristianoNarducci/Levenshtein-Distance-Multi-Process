@@ -177,7 +177,7 @@ def main():
         results_seq.append(bitap(text))
     end = time.perf_counter()
     time_sequential = end - start
-    print(f"sequential time elapsed: {time_sequential:.3f}")
+    print(f"sequential time elapsed: {time_sequential:.3f}s")
     print(f"Speedup: {time_sequential/time_parallel:.3f}")
     matches_found = [i for i, m in enumerate(results_seq) if len(m) > 0]
     print(f"Stringhe con match: {len(matches_found)} su {len(corpus)}")
