@@ -4,7 +4,7 @@ An implementation of string searching using two different algorithms for paralle
 * Levenshtein Distance
 * Bitap Search
 
-using a built-in string generator or a real sentences dataset.
+using a built-in string generator or a real sentences dataset, and the Python Multiprocessing package.
 
 ## Requirements
 * Python >= 3.10
