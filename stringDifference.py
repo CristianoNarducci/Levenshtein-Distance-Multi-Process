@@ -6,6 +6,11 @@ import multiprocessing
 from tqdm import tqdm
 
 def load_corpus(path):
+    """
+    function for load dataset file and extract his corpus
+    :param path: path to file
+    :return: corpus
+    """
     corpus = []
     with open(path,'r',encoding='utf-8') as f:
         for line in f:
@@ -17,20 +22,43 @@ def load_corpus(path):
     return corpus
 
 def random_string(length: int):
+    """
+    function for generate random string of fixed length
+    :param length: length of desired string
+    :return: random string
+    """
     return ''.join(random.choice(string.ascii_lowercase) for _ in range(length))
 
 
 def generate_dataset(n_string, length):
+    """
+    function for generate an entire dataset of string
+    :param n_string: number of desired strings
+    :param length: length of a single string
+    :return: dataset
+    """
     return [random_string(length) for _ in range(n_string)]
 
 
 def chunkify(data, n_chunks):
+    """
+    function for create chunks of a corpus
+    :param data: data to be chunkified
+    :param n_chunks: number of desired chunks
+    :return: chunks
+    """
     size = max(1, len(data) // n_chunks)
     for i in range(0,len(data),size):
         yield data[i:i + size]
 
 
 def levenshtein_distance(s1: str, s2: str) -> int:
+    """
+    function for compute the Levenshtein Distance of two strings
+    :param s1: string to be analyzed
+    :param s2: string to be compared
+    :return: distance of the two strings
+    """
     m, n = len(s1), len(s2)
     dp = [[0 for _ in range(n + 1)] for _ in range(m + 1)]
 
@@ -54,6 +82,11 @@ def levenshtein_distance(s1: str, s2: str) -> int:
 
 
 def bitap(text):
+    """
+    function for compute the Bitap algorithm of a text based of number of error K and a pattern
+    :param text: corpus to be compared
+    :return: matches founded by Bitap
+    """
     R = [~0] * (GLOBAL_K + 1)
     matches = []
 
@@ -76,10 +109,21 @@ def bitap(text):
 
 
 def init_worker_lev(pattern):
+    """
+    function for initialize the Multi process workers for Levenshtein algorithm
+    :param pattern: string to be compared
+    :return:
+    """
     global GLOBAL_PATTERN
     GLOBAL_PATTERN = pattern.lower()
 
 def init_worker_bitap(pattern,k):
+    """
+    function for initialize the Multi process workers for Bitap Algorithm
+    :param pattern: string to be compared to the entire corpus
+    :param k: number of possible differences
+    :return:
+    """
     global GLOBAL_PATTERN, GLOBAL_MASK, GLOBAL_K, GLOBAL_M
     GLOBAL_PATTERN = pattern.lower()
     GLOBAL_K = k
@@ -90,18 +134,50 @@ def init_worker_bitap(pattern,k):
     GLOBAL_MASK = mask
 
 def worker_bitap(chunk):
+    """
+    Worker function executed by a single process for the Bitap algorithm.
+    Each worker applies the Bitap approximate string matching algorithm
+    to a chunk of texts and returns the list of match positions for each text.
+    :param chunk: list of strings to be analyzed
+    :return: list of lists containing match positions for each string
+    """
     result = []
     for text in chunk:
         result.append(bitap(text))
     return result
 
 def worker_levenshtein(args):
+    """
+    Worker function executed by a single process for Levenshtein distance computation.
+
+    Computes the Levenshtein distance between the global pattern and
+    each word contained in the assigned chunk.
+
+    :param args: list of words to compare with the global pattern
+    :return: list of tuples (word, distance)
+
+    """
     chunk = args
     return [(word, levenshtein_distance(GLOBAL_PATTERN, word)) for word in chunk]
 
 def main():
+    """
+    Main execution function.
+
+    This function:
+
+    - initializes multiprocessing resources
+    - loads or generates the dataset
+    - extracts unique words
+    - compares Levenshtein distance using sequential and parallel approaches
+    - compares Bitap approximate matching using sequential and parallel approaches
+    - reports execution times and speedup
+
+    The function is intended as an experimental benchmark for
+    string similarity algorithms on large corpora.
+    """
     n_proc = max(1, multiprocessing.cpu_count() - 2)
-    print(f"Core totali: {multiprocessing.cpu_count()} | Core utilizzati: {n_proc}")
+    print(f"Total Cores: {multiprocessing.cpu_count()} | Initialized Processes: {n_proc}")
     num_chunks = n_proc * 10
     user_choice = int(input("Use random string generator (1) or sample dataset (2)? "))
     if user_choice == 1:
