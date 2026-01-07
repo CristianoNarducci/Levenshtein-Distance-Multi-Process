@@ -189,40 +189,40 @@ def main():
     else:
         print("error wrong input!")
         return
-    print(f"Dataset caricato: {len(corpus)} elementi.")
+    print(f"Dataset loaded: {len(corpus)} elements.")
     unique_words = set()
     for text in corpus:
         clean_text = text.translate(str.maketrans('','',string.punctuation)).lower()
         unique_words.update(clean_text.split())
     unique_words = list(unique_words)
-    print(f"Analisi su {len(unique_words)} parole uniche trovate nel dataset.")
+    print(f"Analysis of {len(unique_words)} unique words founded into the dataset.")
     chunks_lev = chunkify(unique_words, num_chunks)
     args = [chunk for _, chunk in enumerate(chunks_lev)]
-    print(f"Avvio elaborazione con {n_proc} processi su {len(args)} chunk...\n")
+    print(f"Started elaboration by {n_proc} processes on {len(args)} chunks...\n")
     print(f"pattern: {pattern}\n")
     print("Start MultiProcess Version:")
     final_results = []
     start = time.perf_counter()
     with concurrent.futures.ProcessPoolExecutor(max_workers=n_proc, initializer=init_worker_lev, initargs=(pattern,)) as executor:
         future_to_chunk = {executor.submit(worker_levenshtein, arg): arg for arg in args}
-        for future in tqdm(concurrent.futures.as_completed(future_to_chunk),total=len(future_to_chunk),desc="elaborazione chunk",unit=" chunk"):
+        for future in tqdm(concurrent.futures.as_completed(future_to_chunk),total=len(future_to_chunk),desc="chunks elaboration",unit=" chunk"):
             try:
                 result = future.result()
                 final_results.extend(result)
             except Exception as exc:
-                print(f"Un chunk ha generato un errore: {exc}")
+                print(f"chunk found an error: {exc}")
     end = time.perf_counter()
     time_parallel = end - start
     print(f"\nMultiprocess time elapsed: {time_parallel:.3f}s")
     final_results.sort(key=lambda x: x[1])
-    print("--- Top 10 parole più simili nel dataset ---")
+    print("--- Top 10 closest datasets words ---")
     for word, dist in final_results[:10]:
-        print(f"Parola: {word:15} | Distanza: {dist}")
+        print(f"word: {word:15} | Distance: {dist}")
 
     print("\nStart Sequential Version:")
     results = []
     start = time.perf_counter()
-    for words in tqdm(unique_words,total=len(unique_words),desc="elaborazione chunk",unit=" chunk"):
+    for words in tqdm(unique_words,total=len(unique_words),desc="chunks elaboration",unit=" chunk"):
         results.append(levenshtein_distance(pattern.lower(), words.lower()))
     end = time.perf_counter()
     time_sequential = end - start
@@ -235,31 +235,31 @@ def main():
     start = time.perf_counter()
     with concurrent.futures.ProcessPoolExecutor(max_workers=n_proc,initializer=init_worker_bitap,initargs=(pattern,1)) as executor:
         futures = {executor.submit(worker_bitap, arg): arg for arg in args}
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="elaborazione chunk", unit=" chunk"):
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="chunks elaboration", unit=" chunk"):
             bitap_raw.extend(future.result())
     end = time.perf_counter()
     time_parallel = end - start
     matches_found = [i for i, m in enumerate(bitap_raw) if len(m) > 0]
     print(f"\nMultiprocess time elapsed: {time_parallel:.3f}s")
-    print(f"Stringhe con match: {len(matches_found)} su {len(corpus)}")
+    print(f"Strings matched: {len(matches_found)} of {len(corpus)}")
     if matches_found:
         idx = matches_found[0]
-        print(f"Esempio: Stringa {idx}: {corpus[idx]}")
+        print(f"example: String {idx}: {corpus[idx]}")
     print("\nStart Sequential Version:")
     init_worker_bitap(pattern, 1)
     start = time.perf_counter()
     results_seq = []
-    for text in tqdm(corpus,total=len(corpus),desc="elaborazione chunk",unit=" chunk"):
+    for text in tqdm(corpus,total=len(corpus),desc="chunks elaboration",unit=" chunk"):
         results_seq.append(bitap(text))
     end = time.perf_counter()
     time_sequential = end - start
     print(f"sequential time elapsed: {time_sequential:.3f}s")
     print(f"Speedup: {time_sequential/time_parallel:.3f}")
     matches_found = [i for i, m in enumerate(results_seq) if len(m) > 0]
-    print(f"Stringhe con match: {len(matches_found)} su {len(corpus)}")
+    print(f"Strings matched: {len(matches_found)} of {len(corpus)}")
     if matches_found:
         idx = matches_found[0]
-        print(f"Esempio: Stringa {idx} testo: {corpus[idx]}")
+        print(f"example: String {idx}: {corpus[idx]}")
 
 
 if __name__ == '__main__':
